@@ -4,9 +4,13 @@ from openai import OpenAI
 
 from typing import Dict, List
 
+import random
+
 from processing.segmentation import (
     CAM_INDEX_TO_PATTERN,
     ANG_INDEX_TO_PATTERN,
+    CAMERABENCH_CAM_INDEX_TO_PATTERN,
+    CAMERABENCH_ANG_INDEX_TO_PATTERN,
     find_consecutive_chunks,
 )
 
@@ -35,6 +39,29 @@ def call_gpt4_v(user_prompt, modelname, max_tokens=700):
     )
     return response
 
+def call_local_model(user_prompt, model_name, max_tokens=700, verbose=False):
+    client = OpenAI(
+        # base_url="http://127.0.0.1:22002/v1",
+        base_url="http://127.0.0.1:22011/v1",
+        api_key="none"
+    )
+
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_prompt},
+                ],
+            }
+        ],
+        max_tokens=max_tokens,
+        # stream=True,
+    )
+
+    return response
+
 
 def show_content(response):
     print(response.choices[0].message.content)
@@ -46,7 +73,8 @@ def show_content(response):
 def single_test(prompt_text, modelname):            
     for k in range(MAX_TRIALS):
         try:
-            response = call_gpt4_v(prompt_text, modelname)
+            # response = call_gpt4_v(prompt_text, modelname)
+            response = call_local_model(prompt_text, modelname)
             caption = response.choices[0].message.content
             if any(char.isdigit() for char in caption):
                 assert False, f"{caption}\n"
@@ -87,12 +115,26 @@ def has_consecutive_nonzero_same_numbers(angular_list):
             return True
     return False
 
+def get_chunk_descriptions(cam_segments):
+    # # Find consecutive chunks of patterns
+    cam_chunks = find_consecutive_chunks(cam_segments)
+    
+    # Describe each chunk and join them
+    cam_description = []
+    for index, start, end in cam_chunks:
+        description = get_full_description(index, start, end, CAM_INDEX_TO_PATTERN, ANG_INDEX_TO_PATTERN)
+        cam_description.append(description)
+    
+    return cam_description
+
 def caption_trajectories(
     cam_segments: List[int],
     context_prompt: str,
     instruction_prompt: str,
     constraint_prompt: str,
     demonstration_prompt: str,
+    model_name: str,
+    verbose = False
 ) -> str:
     # # Find consecutive chunks of patterns
     cam_chunks = find_consecutive_chunks(cam_segments)
@@ -101,7 +143,9 @@ def caption_trajectories(
     cam_description = []
     angular_list = []
     for index, start, end in cam_chunks:
-        description = get_full_description(index, start, end, CAM_INDEX_TO_PATTERN, ANG_INDEX_TO_PATTERN)
+        description = get_full_description(index, start, end,
+                                           random.choice([CAM_INDEX_TO_PATTERN, CAMERABENCH_CAM_INDEX_TO_PATTERN]),
+                                           random.choice([ANG_INDEX_TO_PATTERN, CAMERABENCH_ANG_INDEX_TO_PATTERN]))
         angular_list.append(index%7)
         cam_description.append(description)
 
@@ -112,7 +156,7 @@ def caption_trajectories(
         + ". "
     )
     
-    # # Prompt the chatbot with the trajectory description
+    # Prompt the chatbot with the trajectory description
     caption_prompt = get_caption_prompt(
         traj_description,
         context_prompt,
@@ -120,13 +164,16 @@ def caption_trajectories(
         constraint_prompt,
         demonstration_prompt,
     )
+
+    caption = single_test(caption_prompt, model_name)
     
-    if has_consecutive_nonzero_same_numbers(angular_list):
-        print("Consecutive same numbers")
-        caption = single_test(caption_prompt, "gpt-4o")
-    else:
-        print("No consecutive same numbers")
-        caption = single_test(caption_prompt, "gpt-4o-mini")
-    print(caption)
+    # if has_consecutive_nonzero_same_numbers(angular_list):
+    #     print("Consecutive same numbers")
+    #     caption = single_test(caption_prompt, "gpt-4o")
+    # else:
+    #     print("No consecutive same numbers")
+    #     caption = single_test(caption_prompt, "gpt-4o-mini")
+    if verbose:
+        print(caption)
 
     return caption

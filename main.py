@@ -23,20 +23,25 @@ def main():
     print("save_epoch:", opt.save_epoch)
     print("pose_length:", opt.pose_length)
     # validate options
-    # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    ddp_kwargs = DistributedDataParallelKwargs(
+        # find_unused_parameters=True
+        find_unused_parameters=False,   # 일단 False로
+        static_graph=True,
+    )
 
     accelerator = Accelerator(
         mixed_precision=opt.mixed_precision,
         gradient_accumulation_steps=opt.gradient_accumulation_steps,
-        # kwargs_handlers=[ddp_kwargs],
+        kwargs_handlers=[ddp_kwargs],
     )
 
     os.makedirs(os.path.join(opt.workspace, opt.exp_name), exist_ok=True)
     logfile = os.path.join(opt.workspace, opt.exp_name, 'log.txt')
     logger = init_logger(logfile)
 
-    # print options
-    accelerator.print(opt)
+    if accelerator.is_main_process:
+        # print options
+        accelerator.print(opt)
     
     # tokenizer
     vocab_size = opt.discrete_bins + 4 # discrete_bins+1, bos, eos, pad
@@ -82,9 +87,11 @@ def main():
     total_p = sum(p.numel() for p in model.parameters())
     logger.info(f'trainable param num: {num_p/1024/1024:.6f} M, total param num: {total_p/1024/1024:.6f}')
 
+    # 우리꺼로 교체
     train_dataset = ShotTrajDataset(opt, training=True)
     
-    logger.info(f'train dataset size: {len(train_dataset)}')
+    if accelerator.is_main_process:
+        logger.info(f'train dataset size: {len(train_dataset)}')
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -96,9 +103,24 @@ def main():
         collate_fn=partial(collate_fn, opt=opt),
     )
 
+    if accelerator.is_main_process:
+        print("\nINPUT")
+        for i, data in enumerate(train_dataloader):
+            print(data.keys())
+            for key in data.keys():
+                if isinstance(data[key], torch.Tensor):
+                    print(key, data[key].shape)
+                elif isinstance(data[key], list):
+                    print(key, len(data[key]))
+                else:
+                    print(key, data[key])
+            break
+        print()
+
     test_dataset = ShotTrajDataset(opt, training=False)
 
-    logger.info(f'test dataset size: {len(test_dataset)}')
+    if accelerator.is_main_process:
+        logger.info(f'test dataset size: {len(test_dataset)}')
     
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset,
@@ -135,9 +157,12 @@ def main():
     # loop
     old_save_dirs = []
     best_loss = 1e9
+    train_start_time = time.time()
     for epoch in range(opt.start_epoch, opt.num_epochs):
 
         save_dir = os.path.join(opt.workspace, opt.exp_name, f'ep{epoch:04d}')
+
+        epoch_start_time = time.time()
 
         # train
         if not opt.debug_eval:
@@ -145,6 +170,7 @@ def main():
             total_loss = 0
             t_start = time.time()
             for i, data in enumerate(train_dataloader):
+                iter_start_time = time.time()
                 with accelerator.accumulate(model):
                     optimizer.zero_grad()
 
@@ -167,6 +193,7 @@ def main():
 
                 if accelerator.is_main_process:
                     # logging
+                    print("Iter Time", time.time() - iter_start_time)
                     if i % 10 == 0:
                         mem_free, mem_total = torch.cuda.mem_get_info()
                         log = f"{epoch:03d}:{i}/{len(train_dataloader)} mem: {(mem_total-mem_free)/1024**3:.2f}/{mem_total/1024**3:.2f}G lr: {scheduler.get_last_lr()[0]:.7f} loss: {loss.item():.6f}"
@@ -174,7 +201,8 @@ def main():
                             log += f" loss_ce: {out['loss_ce'].item():.6f}"
                         if 'loss_kl' in out:
                             log += f" loss_kl: {out['loss_kl'].item():.6f}"
-                        logger.info(log)
+                        if accelerator.is_main_process:
+                            logger.info(log)
 
             total_loss = accelerator.gather_for_metrics(total_loss).mean().item()
             torch.cuda.synchronize()
@@ -201,6 +229,10 @@ def main():
         else:
             if accelerator.is_main_process:
                 logger.info(f"epoch: {epoch} skip training for debug !!!")
+
+        if accelerator.is_main_process:
+            print("Epoch time:", time.time() - epoch_start_time)
+            print("Train time:", time.time() - train_start_time)
 
         # eval
         if opt.eval_mode == 'loss':
@@ -233,7 +265,7 @@ def main():
                 with torch.autocast(device_type='cuda', dtype=torch.float16):
                     for i, data in enumerate(test_dataloader):
                         conds = data['conds'] # [B, 3, H, W] or [B, N, 6]
-                        meshes, tokens = unwrapped_model.generate(conds, num_faces=opt.test_num_face, tokenizer=tokenizer)
+                        meshes, tokens = unwrapped_model.generate(conds, num_faces=opt.test_num_face)
 
                         # if accelerator.process_index < 4:
                         if opt.cond_mode == 'image':

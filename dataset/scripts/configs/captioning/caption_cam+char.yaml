@@ -6,11 +6,12 @@ defaults:
   # 
 
 name: caption
-data_dir: './DATA/Dataset'
+data_dir: './DATA'
+# data_dir: '/data1/cympyc1785/SceneData/DL3DV/scenes/1K'
 output_dir: './DATA/Tagging'
-overwrite: false
+overwrite: true
 reverse: false
 
 smoothing_window_size: 18
 min_chunk_size: 10
-fps: 30.0
+fps: 10.0

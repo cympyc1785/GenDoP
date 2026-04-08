@@ -109,15 +109,20 @@ def convert_viser_poses_to_new_coordinate_system(quaternions, positions):
     return np.array(matrices)
     
 def draw_json(json_path, vis_name):
-    vis_path = json_path.replace("_transforms", "_traj").replace(".json", ".png")
+    # vis_path = json_path.replace("_transforms", "_traj").replace(".json", ".png")
+    vis_path = f"{vis_name}.png"
     print(vis_path)
     poses = []
     data = json.load(open(json_path))['frames']
-    for frame in data:
+    for frame in data[::5]:
         poses.append(frame['transform_matrix'])
         
     poses = [poses[i] for i in range(0, len(poses), 2)]
     c2ws = torch.tensor(poses)
+
+    print(c2ws[0])
+
+    # c2ws[..., :3, 1:3] *= -1
     
     ref_w2c = torch.inverse(c2ws[:1])
     c2ws = ref_w2c.repeat(c2ws.shape[0], 1, 1) @ c2ws
@@ -176,20 +181,27 @@ def draw_json(json_path, vis_name):
     print(f"Combined image saved at {vis_path}")
 
 if __name__ == "__main__":
-    valid_name_list = []
-    invalid_name_list = []
-    visname = 'vis0'
-    dataset_dir = "./DATA/Dataset"
-    dataset_list = "./DATA/DataDoP_valid.txt"
-    with open(dataset_list, 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            valid_name_list.append(line.strip())
-    print("#valid_name_list:", len(valid_name_list))
-    for name in tqdm.tqdm(valid_name_list):
-        json_file = f"{dataset_dir}/{name}_transforms_cleaning.json"
-        vis_path = json_file.replace("_transforms", "_traj").replace(".json", ".png")
-        if os.path.exists(vis_path):
-            print(f"Skip {vis_path}")
-            continue
-        draw_json(json_file, visname)
+    draw_json("/data1/cympyc1785/camera_gen/DIRECTOR/output/converted/1K_0032cd2f169847864c28e5e190c2496c03ddd1a5e68d52145634164ebe57d3ac_5_transforms_pred.json", "director")
+    # valid_name_list = []
+    # # invalid_name_list = []
+    # visname = 'vis0000'
+    # dataset_dir = "./DATA/1_0000"
+    # # dataset_list = "./DATA/DataDoP_valid.txt"
+    # # with open(dataset_list, 'r') as f:
+    # #     lines = f.readlines()
+    # #     for line in lines:
+    # #         valid_name_list.append(line.strip())
+    # # print("#valid_name_list:", len(valid_name_list))
+    # for file in sorted(os.listdir(dataset_dir)):
+    #     if file.endswith("_transforms_cleaning.json"):
+    #         valid_name_list.append(file)
+    # for name in tqdm.tqdm(valid_name_list):
+    #     # json_file = f"{dataset_dir}/{name}_transforms_cleaning.json"
+    #     # vis_path = json_file.replace("_transforms", "_traj").replace(".json", ".png")
+    #     json_file = f"{dataset_dir}/{name}"
+    #     vis_path = f"{visname}.png"
+    #     # if os.path.exists(vis_path):
+    #     #     print(f"Skip {vis_path}")
+    #     #     continue
+    #     draw_json(json_file, visname)
+    #     input("continue?")

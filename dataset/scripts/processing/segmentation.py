@@ -56,6 +56,48 @@ CAM_INDEX_TO_PATTERN = {
     26: "move left, down, and forward"
 }
 
+CAMERABENCH_ANG_INDEX_TO_PATTERN = {
+    0: "static",  # No rotation
+    1: "tilt up",  
+    2: "tilt down", 
+    3: "pan left",
+    4: "pan right",
+    5: "roll left",
+    6: "roll right",
+}
+
+CAMERABENCH_CAM_INDEX_TO_PATTERN = {
+    0: "static",
+    1: "dolly backward",  # keep "move forward" as it is
+    2: "dolly forward",  # keep "move backward" as it is
+    3: "pedestal up",
+    6: "pedestal down",
+    18: "truck left",
+    9: "truck right",
+    # ----- #
+    12: "pan right and pedestal up",
+    15: "pan right and pedestal down",
+    21: "pan left and pedestal up",
+    24: "pan left and pedestal down",
+    10: "pan right and dolly backward",
+    11: "pan right and dolly forward",
+    19: "pan left and dolly backward",
+    20: "pan left and dolly forward",
+    4: "pedestal up and dolly backward",
+    5: "pedestal up and dolly forward",
+    7: "pedestal down and dolly backward",
+    8: "pedestal down and dolly forward",
+    # ----- #
+    13: "pan right, pedestal up, and dolly backward",
+    14: "pan right, pedestal up, and dolly forward",
+    16: "pan right, pedestal down, and dolly backward",
+    17: "pan right, pedestal down, and dolly forward",
+    22: "pan left, pedestal up, and dolly backward",
+    23: "pan left, pedestal up, and dolly forward",
+    25: "pan left, pedestal down, and dolly backward",
+    26: "pan left, pedestal down, and dolly forward"
+}
+
 def to_euler_angles(
     rotation_mat: TensorType["num_frames", 3, 3]
 ) -> TensorType["num_frames", 3]:
@@ -247,10 +289,13 @@ def perform_angular_segmentation(
         if torch.abs(sample_angular_velocity).max() > static_threshold:
             
             if torch.abs(sample_angular_velocity[0]) > max(torch.abs(sample_angular_velocity[1]), torch.abs(sample_angular_velocity[2])):
+                # pitch
                 sample_pattern[0] = 1
             elif torch.abs(sample_angular_velocity[1]) > max(torch.abs(sample_angular_velocity[0]), torch.abs(sample_angular_velocity[2])):
+                # yaw
                 sample_pattern[1] = 1
             elif torch.abs(sample_angular_velocity[2]) > max(torch.abs(sample_angular_velocity[0]), torch.abs(sample_angular_velocity[1])):
+                # roll
                 sample_pattern[2] = 1
         
         sample_pattern = torch.sign(sample_angular_velocity) * sample_pattern
@@ -378,6 +423,7 @@ def segment_rigidbody_trajectories(
     angular_static_threshold: float,
     smoothing_window_size: int,
     min_chunk_size: int,
+    verbose = False,
 ) -> List[int]:
     velocities, t_vels, a_vels = compute_camera_dynamics(w2c_poses, fps=fps)
     t_velocities, t_xy_velocity, t_xz_velocity, t_yz_velocity = t_vels
@@ -386,11 +432,16 @@ def segment_rigidbody_trajectories(
     # Translation segments
     cam_segments = perform_segmentation(t_velocities, t_xy_velocity, t_xz_velocity, t_yz_velocity, cam_static_threshold, cam_diff_threshold, smoothing_window_size)
     angular_segments = perform_angular_segmentation(a_velocities, a_xy_velocity, a_xz_velocity, a_yz_velocity, angular_static_threshold)
+
+    if verbose:
+        for seg in cam_segments:
+            print(seg, CAM_INDEX_TO_PATTERN[seg])
+
     
     combine_segments_origin = [cam_segments[i]*7+angular_segments[i] for i in range(len(cam_segments))]
     idx_len = 100
     smoothing_window_size = 15
-    min_chunk_size = 10
+    min_chunk_size = 10 # 8 for precise
     while idx_len > 4:
         # print(smoothing_window_size, min_chunk_size)
         combine_segments = smooth_segments(combine_segments_origin, smoothing_window_size)
