@@ -35,3 +35,14 @@ dataset/readme.md
 dataset/outputs
 dataset/vis0
 dataset/upload
+dataset/logs
+dataset/analysis
+DataDoP_tags
+DataDoP_tags_ours
+DataDoP_avg_scales
+DataDoP_tags_our_style
+Normalized_Cameras
+Normalized_Cameras_2
+OurDataset_avg_scales
+Tags
+dataset
