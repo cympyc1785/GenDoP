@@ -43,7 +43,7 @@ def load_traj(traj_path):
 
             c2w[:3, 1:3] *= -1
             
-            w2c = torch.inverse(c2w)
+            # w2c = torch.inverse(c2w)
 
             traj.append(c2w.tolist())
     
@@ -83,6 +83,7 @@ def caption_tags(cam_segments, traj_name, frame_len, config):
         constraint_prompt=config.llm.constraint,
         demonstration_prompt=config.llm.demonstration,
         model_name=model_name,
+        shuffle_taxonomy=config["shuffle_taxonomy"],
     )
 
     result = {}
@@ -145,65 +146,9 @@ def find_continuous_segments(nums: list, segment_len=49, use_remaining_frames=Fa
 
     return segments_num, segments_idx
 
-
-def process_one_scene_only_tagging(task, ROOT_DIR, EXPORT_DIR, config):
-    VID_SEG_LEN = 49
-    ERR_PATH = "logs/errors.txt"
-    split, scene_name = task
-    data_dir = os.path.join(ROOT_DIR, split)
-    scene_dir = os.path.join(data_dir, scene_name)
-    traj_path = os.path.join(scene_dir, "cameras.json")
-    images_dir = os.path.join(scene_dir, "rgb")
-    if not os.path.exists(images_dir):
-        images_dir = os.path.join(scene_dir, "images")
-    if not os.path.exists(images_dir):
-        with open(ERR_PATH, "a+") as f:
-            f.write(f"{split}/{scene_name} no images folder\n")
-        return
-    cam_seg_tags_path = os.path.join(EXPORT_DIR, split, scene_name, "camera_tags.json")
-
-    traj_all = load_traj(traj_path)
-
-    cam_tags_per_seg = {}
-    if os.path.exists(cam_seg_tags_path):
-        with open(cam_seg_tags_path, "r", encoding="utf-8") as f:
-            cam_tags_per_seg = json.load(f)
-    else:
-        os.makedirs(os.path.dirname(cam_seg_tags_path), exist_ok=True)
-
-    # segments = math.ceil(len(traj_all) / float(VID_SEG_LEN))
-    # Find discontinuous image sequence
-    image_filenames = sorted(os.listdir(images_dir))
-    if image_filenames[0].startswith("frame"):
-        img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
-    else:
-        img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
-    _, segments_idx = find_continuous_segments(img_num_list, use_remaining_frames=True)
-    
-    for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
-        seg_idx_str = str(seg_idx)
-        traj = traj_all[seg_start_idx: seg_end_idx]
-        
-        try:
-            # ===== Tagging =====
-            if (not config.overwrite) and (seg_idx_str in cam_tags_per_seg):
-                print("Skipping tagging and loading saved tags...")
-                data = cam_tags_per_seg[seg_idx_str]
-                cam_segments = [int(seg) for seg in data["segments"].strip('[').strip(']').split(',')]
-            else:
-                cam_segments, cam_tags = tag_segments(traj, scene_dir, config)
-                cam_tags_per_seg[seg_idx_str] = cam_tags
-
-                with open(cam_seg_tags_path, "w") as f:
-                    json.dump(cam_tags_per_seg, f, indent=4)
-        except Exception as e:
-            with open(ERR_PATH, "a+") as f:
-                f.write(f"{split}/{scene_name} {seg_idx} ({seg_start_idx},{seg_end_idx}) segment process error {e}\n")
-
-
 def process_one_scene(task, EXPORT_DIR, config):
     VID_SEG_LEN = 49
-    ERR_PATH = "logs/errors.txt"
+    ERR_PATH = os.path.join(EXPORT_DIR, "logs/errors.txt")
     scene_dir, split, scene_name = task
     # data_dir = os.path.join(ROOT_DIR, split)
     # scene_dir = os.path.join(data_dir, scene_name)
@@ -212,7 +157,9 @@ def process_one_scene(task, EXPORT_DIR, config):
     if not os.path.exists(images_dir):
         images_dir = os.path.join(scene_dir, "images")
     traj_path = os.path.join(scene_dir, "cameras.json")
-    cam_seg_tags_path = os.path.join(scene_dir, "viz", "camera_tags_per_seg.json")
+    cam_seg_tags_path = os.path.join(EXPORT_DIR, split, scene_name, "tags", "camera_tags_per_seg.json")
+
+    os.makedirs(os.path.dirname(ERR_PATH), exist_ok=True)
 
     traj_all = load_traj(traj_path)
     
@@ -226,11 +173,12 @@ def process_one_scene(task, EXPORT_DIR, config):
 
     # Find discontinuous image sequence
     image_filenames = sorted(os.listdir(images_dir))
-    img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
-    # img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
+    if image_filenames[0].startswith("frame"):
+        img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
+    else:
+        img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
 
-    _, segments_idx = find_continuous_segments(img_num_list, use_remaining_frames=True)
-    
+    _, segments_idx = find_continuous_segments(img_num_list, segment_len=config["segment_length"], use_remaining_frames=False)
 
     for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
         seg_idx_str = str(seg_idx)
@@ -250,25 +198,27 @@ def process_one_scene(task, EXPORT_DIR, config):
                     json.dump(cam_tags_per_seg, f, indent=4)
 
             # ===== Caption =====
-            result = caption_tags(cam_segments, scene_name, VID_SEG_LEN, config)
+            if not config["only_tagging"]:
+                result = caption_tags(cam_segments, scene_name, VID_SEG_LEN, config)
 
-            if "Error" in result[f"prompt_camera"] or "error" in result[f"prompt_camera"]:
-                with open(ERR_PATH, "a+") as f:
-                    f.write(f"{split}/{scene_name}\n")
+                if "Error" in result[f"prompt_camera"] or "error" in result[f"prompt_camera"]:
+                    with open(ERR_PATH, "a+") as f:
+                        f.write(f"{split}/{scene_name}\n")
 
-            save_data = {"frame_idx":[seg_start_idx, seg_end_idx]}
-            save_data.update(result)
-            
-            saved_prompt_path = os.path.join(EXPORT_DIR, split, scene_name, "prompts.json")
-            if not os.path.exists(saved_prompt_path):
-                with open(saved_prompt_path, "w") as f:
-                    json.dump({}, f)
-            saved_output = load_json(saved_prompt_path)
-            if seg_idx_str in saved_output.keys():
-                saved_output[seg_idx_str].update(save_data)
-            else:
-                saved_output[seg_idx_str] = save_data
-            save_json(saved_output, saved_prompt_path)
+                save_data = {"frame_idx":[seg_start_idx, seg_end_idx]}
+                save_data.update(result)
+                
+                saved_prompt_path = os.path.join(EXPORT_DIR, split, scene_name, "prompts.json")
+                if not os.path.exists(saved_prompt_path):
+                    os.makedirs(os.path.dirname(saved_prompt_path), exist_ok=True)
+                    with open(saved_prompt_path, "w") as f:
+                        json.dump({}, f)
+                saved_output = load_json(saved_prompt_path)
+                if seg_idx_str in saved_output.keys():
+                    saved_output[seg_idx_str].update(save_data)
+                else:
+                    saved_output[seg_idx_str] = save_data
+                save_json(saved_output, saved_prompt_path)
         except Exception as e:
             with open(ERR_PATH, "a+") as f:
                 f.write(f"{split}/{scene_name} {seg_idx} ({seg_start_idx},{seg_end_idx}) segment process error {e}\n")
@@ -286,7 +236,10 @@ def run_parallel_scenes(worker, tasks, EXPORT_DIR, config, num_workers=1):
             while pending:
                 done, pending = wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
                 for fut in done:
-                    pbar.update(1)
+                    if fut.done():
+                        if fut.exception() is not None:
+                            print("FAILED:", fut.exception())
+                        pbar.update(1)
         except KeyboardInterrupt:
             ex.shutdown(wait=False, cancel_futures=True)
             for pid, proc in getattr(ex, "_processes", {}).items():
@@ -435,8 +388,8 @@ def launch_captioning(config: DictConfig):
     # splits = sorted(os.listdir(ROOT_DIR))
     # run_all_splits(process_one_scene, ROOT_DIR, EXPORT_DIR, splits, config)
 
-    ROOT_DIR = "/data1/ckd248/data"
-    EXPORT_DIR = "/data1/ckd248/data"
+    ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../WorldTraj/DL3DV")
+    EXPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../outputs")
     splits = sorted(os.listdir(ROOT_DIR))
     run_all_splits(process_one_scene, ROOT_DIR, EXPORT_DIR, splits, config)
 

@@ -134,6 +134,7 @@ def caption_trajectories(
     constraint_prompt: str,
     demonstration_prompt: str,
     model_name: str,
+    shuffle_taxonomy: bool = False,
     verbose = False
 ) -> str:
     # # Find consecutive chunks of patterns
@@ -143,9 +144,12 @@ def caption_trajectories(
     cam_description = []
     angular_list = []
     for index, start, end in cam_chunks:
-        description = get_full_description(index, start, end,
+        if shuffle_taxonomy:
+            description = get_full_description(index, start, end,
                                            random.choice([CAM_INDEX_TO_PATTERN, CAMERABENCH_CAM_INDEX_TO_PATTERN]),
                                            random.choice([ANG_INDEX_TO_PATTERN, CAMERABENCH_ANG_INDEX_TO_PATTERN]))
+        else:
+            description = get_full_description(index, start, end, CAM_INDEX_TO_PATTERN, ANG_INDEX_TO_PATTERN)
         angular_list.append(index%7)
         cam_description.append(description)
 

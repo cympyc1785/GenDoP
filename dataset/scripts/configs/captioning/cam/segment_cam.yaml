@@ -1,3 +1,3 @@
 static_threshold: 0.02
-diff_threshold: 0.6 # 우린 0.6으로 뽑았었음
+diff_threshold: 0.4 # 우린 0.6으로 뽑았었음
 angular_static_threshold: 0.005
