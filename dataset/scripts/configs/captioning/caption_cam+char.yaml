@@ -19,3 +19,4 @@ fps: 5.0 # DL3DV 5, DynamicVerse 10 GenDop 30
 only_tagging: False
 segment_length: 20 # 49
 shuffle_taxonomy: False
+prompt_filename: prompts_2.json

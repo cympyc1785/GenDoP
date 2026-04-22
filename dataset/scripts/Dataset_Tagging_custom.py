@@ -10,6 +10,8 @@ from tqdm import tqdm
 import math
 import random 
 
+import argparse
+
 import hydra
 import numpy as np
 from omegaconf import DictConfig
@@ -157,7 +159,7 @@ def process_one_scene(task, EXPORT_DIR, config):
     if not os.path.exists(images_dir):
         images_dir = os.path.join(scene_dir, "images")
     traj_path = os.path.join(scene_dir, "cameras.json")
-    cam_seg_tags_path = os.path.join(EXPORT_DIR, split, scene_name, "tags", "camera_tags_per_seg.json")
+    cam_seg_tags_path = os.path.join(EXPORT_DIR, split, scene_name, "tags", "camera_tags.json")
 
     os.makedirs(os.path.dirname(ERR_PATH), exist_ok=True)
 
@@ -208,7 +210,7 @@ def process_one_scene(task, EXPORT_DIR, config):
                 save_data = {"frame_idx":[seg_start_idx, seg_end_idx]}
                 save_data.update(result)
                 
-                saved_prompt_path = os.path.join(EXPORT_DIR, split, scene_name, "prompts.json")
+                saved_prompt_path = os.path.join(EXPORT_DIR, split, scene_name, config["prompt_filename"])
                 if not os.path.exists(saved_prompt_path):
                     os.makedirs(os.path.dirname(saved_prompt_path), exist_ok=True)
                     with open(saved_prompt_path, "w") as f:
@@ -336,90 +338,22 @@ def get_process_time(config, sample_num=500):
 )
 def launch_captioning(config: DictConfig):
     print(config)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root_dir", default=None, 
+                        help="Scene directory path")
+    parser.add_argument("--export_dir", default=None, 
+                        help="Export directory")
+    arg = parser.parse_args()
     # get_process_time(config)
 
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/DynamicVerse/scenes"
-    # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DynamicVerse"
-    # splits = ["DAVIS", "MOSE", "MVS-Synth", "SAV", "VOST", "dynamic_replica", "spring", "youtube_vis", "uvo"]
+    if arg.root_dir is None:
+        arg.root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../WorldTraj/DL3DV")
+    if arg.export_dir is None:
+        arg.export_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../outputs")
 
-    
-
-    # ROOT_DIR = "/data1/cympyc1785/caption/GenDoP/DataDoP"
-    # splits = ["ours"]
-
-    # # Error Tasks
-    # with open("logs/stat_err.txt", "r") as f:
-    #     errors = f.readlines()
-
-    # tasks = []
-    # for err in errors:
-    #     split, scene_name = err.replace("\n", "").split(" ")[0].split("/")
-    #     tasks.append((split, scene_name))
-    # run_parallel_scenes(tasks, ROOT_DIR, config, num_workers=4)
-    # exit()
-
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/DL3DV/scenes"
-    # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DL3DV"
-    # splits = ["1K", "2K", "3K", "4K", "5K", "6K", "7K",]
-    # run_all_splits(ROOT_DIR, EXPORT_DIR, splits, config)
-
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/DynamicVerse/scenes"
-    # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DynamicVerse"
-    # splits = ["DAVIS", "MOSE", "MVS-Synth", "SAV", "VOST", "dynamic_replica", "spring", "youtube_vis", "uvo"]
-    # run_all_splits(ROOT_DIR, EXPORT_DIR, splits, config)
-
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/DynamicVerse/scenes/dynpose-100k"
-    # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DynamicVerse/dynpose-100k"
-    # splits = [f"dynpose-{i:04d}" for i in range(0, 50)]
-    # run_all_splits(ROOT_DIR, EXPORT_DIR, splits, config)
-
-    # # Add all tasks
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/DynamicVerse/data/dynpose-100k"
-    # # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DynamicVerse/dynpose-100k"
-    # EXPORT_DIR = "/data1/cympyc1785/caption/GenDoP/OurDataset_tags/DynamicVerse/dynpose-100k"
-    # # EXPORT_DIR = "/data1/cympyc1785/SceneData/DynamicVerse/data/dynpose-100k"
-    # # splits = [f"dynpose-{i:04d}" for i in range(67, 73)]
-    # # run_all_splits(ROOT_DIR, EXPORT_DIR, splits, config)
-    # # run_all_splits(process_one_scene, ROOT_DIR, EXPORT_DIR, splits, config)
-    # run_all_splits(process_one_scene_only_tagging, ROOT_DIR, EXPORT_DIR, splits, config)
-
-    # ROOT_DIR = "/data1/cympyc1785/SceneData/tartanair/scenes"
-    # EXPORT_DIR = "/data1/cympyc1785/SceneData/tartanair/scenes"
-    # splits = sorted(os.listdir(ROOT_DIR))
-    # run_all_splits(process_one_scene, ROOT_DIR, EXPORT_DIR, splits, config)
-
-    ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../WorldTraj/DL3DV")
-    EXPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../outputs")
-    splits = sorted(os.listdir(ROOT_DIR))
-    run_all_splits(process_one_scene, ROOT_DIR, EXPORT_DIR, splits, config)
-
-    # tasks = []
-    # for err_task in err_tasks:
-    #     if len(err_task) < 5:
-    #         continue
-    #     split, scene_name = err_task.split(" ")[0].split("/")
-    #     scene_dir = os.path.join(ROOT_DIR, split, scene_name)
-    #     images_dir = os.path.join(scene_dir, "images")
-    #     prompts_path = os.path.join(scene_dir, "prompts.json")
-    #     camera_path = os.path.join(scene_dir, "cameras.json") # Camera는 연속을 가정
-
-    #     tasks.append((split, scene_name))
-
-    #     # Check minimum validity (cam count == image count)
-    #     with open(camera_path, "r") as f:
-    #         cameras = json.load(f)
-    #     image_filenames = sorted(os.listdir(images_dir))
-    #     assert len(image_filenames) == len(cameras)
-
-    #     # # initialize
-    #     # with open(prompts_path, "w") as f:
-    #     #     json.dump({}, f)
-    
-    # run_parallel_scenes(tasks, ROOT_DIR, config, num_workers=4)
-        
-
-        
-
+    splits = sorted(os.listdir(arg.root_dir))
+    run_all_splits(process_one_scene, arg.root_dir, arg.export_dir, splits, config)
 
 if __name__ == "__main__":
     launch_captioning()
