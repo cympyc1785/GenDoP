@@ -441,7 +441,7 @@ def segment_rigidbody_trajectories(
     combine_segments_origin = [cam_segments[i]*7+angular_segments[i] for i in range(len(cam_segments))]
     idx_len = 100
     smoothing_window_size = 15
-    min_chunk_size = 10 # 8 for precise
+    min_chunk_size = 12 # 8 for precise
     while idx_len > 4:
         # print(smoothing_window_size, min_chunk_size)
         combine_segments = smooth_segments(combine_segments_origin, smoothing_window_size)

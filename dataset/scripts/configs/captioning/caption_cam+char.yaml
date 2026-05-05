@@ -14,9 +14,9 @@ reverse: false
 
 smoothing_window_size: 18
 min_chunk_size: 10
-fps: 5.0 # DL3DV 5, DynamicVerse 10 GenDop 30
+fps: 10.0 # DL3DV 5, DynamicVerse 10 GenDop 30
 
 only_tagging: False
-segment_length: 20 # 49
+segment_length: 49 # 49
 shuffle_taxonomy: False
-prompt_filename: prompts_2.json
+prompt_filename: prompts.json
