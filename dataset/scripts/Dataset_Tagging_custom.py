@@ -164,27 +164,43 @@ def process_one_scene(task, EXPORT_DIR, config):
     os.makedirs(os.path.dirname(ERR_PATH), exist_ok=True)
 
     traj_all = load_traj(traj_path)
+
+    saved_prompt_path = os.path.join(EXPORT_DIR, split, scene_name, config["prompt_filename"])
+    if os.path.exists(saved_prompt_path):
+        os.remove(saved_prompt_path)
     
 
     cam_tags_per_seg = {}
     if os.path.exists(cam_seg_tags_path):
-        with open(cam_seg_tags_path, "r", encoding="utf-8") as f:
-            cam_tags_per_seg = json.load(f)
+        pass
+        # with open(cam_seg_tags_path, "r", encoding="utf-8") as f:
+        #     cam_tags_per_seg = json.load(f)
     else:
         os.makedirs(os.path.dirname(cam_seg_tags_path), exist_ok=True)
 
-    # Find discontinuous image sequence
-    image_filenames = sorted(os.listdir(images_dir))
-    if image_filenames[0].startswith("frame"):
-        img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
-    else:
-        img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
+    seg_len = int(config["segment_length"])
 
-    _, segments_idx = find_continuous_segments(img_num_list, segment_len=config["segment_length"], use_remaining_frames=False)
+    # # Find discontinuous image sequence
+    # image_filenames = sorted(os.listdir(images_dir))
+    # if image_filenames[0].startswith("frame"):
+    #     img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
+    # else:
+    #     img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
 
-    for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
+    # _, segments_idx = find_continuous_segments(img_num_list, segment_len=config["segment_length"], use_remaining_frames=False)
+
+    cam_ranges = [(i*seg_len, (i + 1) * seg_len) for i in range(0, len(traj_all) // seg_len)]
+
+    # cam_range_path = os.path.join(scene_dir, "valid_camera_ranges.json")
+    # cam_ranges = json.load(open(cam_range_path, "r"))["valid_camera_ranges"]
+
+
+    # for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
+    for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(cam_ranges):
         seg_idx_str = str(seg_idx)
         traj = traj_all[seg_start_idx: seg_end_idx]
+
+        print(len(traj))
         
         try:
             # ===== Tagging =====
@@ -339,21 +355,28 @@ def get_process_time(config, sample_num=500):
 def launch_captioning(config: DictConfig):
     print(config)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root_dir", default=None, 
-                        help="Scene directory path")
-    parser.add_argument("--export_dir", default=None, 
-                        help="Export directory")
-    arg = parser.parse_args()
-    # get_process_time(config)
+    # root_dir = "/NHNHOME/WORKSPACE/0226010013_A/cympyc1785/caption/GenDoP/WorldTraj/scenesplat/scenes"
+    export_dir = "/NHNHOME/WORKSPACE/0226010013_A/cympyc1785/caption/GenDoP/WorldTraj/scenesplat/scenes"
 
-    if arg.root_dir is None:
-        arg.root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../WorldTraj/DL3DV")
-    if arg.export_dir is None:
-        arg.export_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../outputs")
+    # # splits = sorted(os.listdir(arg.root_dir))
+    # splits = ["aria"]
+    # run_all_splits(process_one_scene, root_dir, export_dir, splits, config)
 
-    splits = sorted(os.listdir(arg.root_dir))
-    run_all_splits(process_one_scene, arg.root_dir, arg.export_dir, splits, config)
+    err_path = "/NHNHOME/WORKSPACE/0226010013_A/cympyc1785/caption/GenDoP/WorldTraj/scenesplat/errors.txt"
+
+    with open(err_path, "r") as f:
+        errors = f.readlines()
+        errors = [e.strip() for e in errors]
+
+    tasks = []
+    for error_scene_dir in errors:
+        tasks.append((error_scene_dir, "aria", os.path.basename(error_scene_dir)))
+
+    print(tasks)
+    
+    # run_parallel_scenes(process_one_scene, tasks, export_dir, config, num_workers=4)
+    for task in tasks:
+        process_one_scene(task, export_dir, config)
 
 if __name__ == "__main__":
     launch_captioning()
